@@ -1,0 +1,497 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  DRIVER
+  FLEET_MANAGER
+  ADMIN
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+  DRIVER
+  CUSTOMER
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  EXPIRED
+  CANCELLED
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  RENTED
+  MAINTENANCE
+  RESERVED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum VehicleType {
+  CAR
+  MOTORCYCLE
+  SCOOTER
+  TRUCK
+  BUS
+  VAN
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  ESEWA
+  KHALTI
+  FONEPAY
+  CASH
+}
+
+enum NotificationType {
+  EXPIRY_REMINDER
+  EMERGENCY_SOS
+  PARKING_ALERT
+  SUSPICIOUS_ACTIVITY
+  GENERAL
+}
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  phone             String             @unique
+  passwordHash      String
+  fullName          String
+  role              Role               @default(USER)
+  avatarUrl         String?
+  mustChangePassword Boolean           @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  vehicles          Vehicle[]
+  familyMembers     FamilyMember[]
+  fleets            Fleet[]            @relation("FleetManager")
+  payments          Payment[]
+  notifications     Notification[]
+  suspicious        SuspiciousReport[]
+  tenantMemberships TenantUser[]
+  customerBookings  RentalBooking[]    @relation("CustomerBookings")
+
+  @@map("users")
+}
+
+model Tenant {
+  id            String               @id @default(uuid())
+  name          String
+  slug          String               @unique
+  domain        String?              @unique
+  status        TenantStatus         @default(ACTIVE)
+  logoUrl       String?
+  address       String?
+  phone         String?
+  email         String?
+  paymentQrUrl  String?
+  esewaQrUrl    String?
+  khaltiQrUrl   String?
+  fonepayQrUrl  String?
+  bankAccountDetails String?
+  whatsappUrl        String?
+  tiktokUrl          String?
+  facebookUrl        String?
+  instagramUrl       String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  members       TenantUser[]
+  subscriptions TenantSubscription[]
+  vehicles      Vehicle[]
+  bookings      RentalBooking[]
+  payments      Payment[]
+  documents     TenantDocument[]
+  iotDevices    IotDevice[]
+  promoCodes    PromoCode[]
+
+  @@map("tenants")
+}
+
+model TenantDocument {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title       String
+  type        String   @default("BUSINESS_REGISTRATION")
+  fileUrl     String
+  publicId    String?
+  fileType    String?
+  fileSize    Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("tenant_documents")
+}
+
+model TenantUser {
+  id        String     @id @default(uuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      TenantRole @default(STAFF)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([tenantId, userId])
+  @@map("tenant_users")
+}
+
+model SubscriptionPlan {
+  id           String               @id @default(uuid())
+  name         String               @unique
+  slug         String               @unique
+  description  String?
+  price        Float
+  billingCycle BillingCycle         @default(MONTHLY)
+  maxVehicles  Int                  @default(5)
+  maxStaff     Int                  @default(2)
+  features     String[]             @default([])
+  isActive     Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  subscriptions TenantSubscription[]
+
+  @@map("subscription_plans")
+}
+
+model TenantSubscription {
+  id          String             @id @default(uuid())
+  tenantId    String             @unique
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId      String
+  plan        SubscriptionPlan   @relation(fields: [planId], references: [id])
+  status      SubscriptionStatus @default(TRIALING)
+  startDate   DateTime           @default(now())
+  endDate     DateTime
+  trialEndsAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@map("tenant_subscriptions")
+}
+
+model Vehicle {
+  id            String            @id @default(uuid())
+  ownerId       String
+  owner         User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenantId      String?
+  tenant        Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  status        VehicleStatus     @default(AVAILABLE)
+  dailyRate     Float?
+  hourlyRate    Float?
+  plateNumber   String            @unique
+  vehicleType   VehicleType
+  brand         String
+  model         String
+  color         String
+  chassisNumber String?
+  engineNumber  String?
+  qrCodeUrl     String?
+  imageUrl      String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  qrCode        QrCode?
+  documents     Document[]
+  reminders     Reminder[]
+  parkingLogs   ParkingLog[]
+  gpsLogs       GpsLog[]
+  roadside      RoadsideRequest[]
+  insurance     InsurancePolicy[]
+  bookings      RentalBooking[]
+  iotDevice     IotDevice?
+
+  @@map("vehicles")
+}
+
+model RentalBooking {
+  id             String        @id @default(uuid())
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicleId      String
+  vehicle        Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       User          @relation("CustomerBookings", fields: [customerId], references: [id])
+  startDate      DateTime
+  endDate        DateTime
+  totalAmount    Float
+  depositAmount  Float         @default(0)
+  status         BookingStatus @default(PENDING)
+  pickupLocation String?
+  returnLocation String?
+  documentUrl    String?
+  citizenshipUrl String?
+  bankChequeUrl  String?
+  drivingLicenseUrl String?
+  paymentReceiptUrl String?
+  customerName      String?
+  customerEmail     String?
+  customerPhone     String?
+  pickupOdometerKm  Int?
+  pickupFuelLevel   String?
+  pickupNotes       String?
+  pickupPhotos      String[]      @default([])
+  pickupInspectedAt DateTime?
+  returnOdometerKm  Int?
+  returnFuelLevel   String?
+  returnNotes       String?
+  returnPhotos      String[]      @default([])
+  returnDamageFee   Float         @default(0)
+  returnInspectedAt DateTime?
+  withDriver        Boolean       @default(false)
+  driverFee         Float         @default(0)
+  discountAmount    Float         @default(0)
+  promoCode         String?
+  createdAt         DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  payments       Payment[]
+
+  @@map("rental_bookings")
+}
+
+model QrCode {
+  id        String   @id @default(uuid())
+  vehicleId String   @unique
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  code      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("qr_codes")
+}
+
+model ParkingLog {
+  id        String    @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  spotName  String
+  entryTime DateTime  @default(now())
+  exitTime  DateTime?
+  feeAmount Float?
+  paid      Boolean   @default(false)
+
+  @@map("parking_logs")
+}
+
+model SuspiciousReport {
+  id          String   @id @default(uuid())
+  reporterId  String
+  reporter    User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  plateNumber String
+  description String
+  location    String?
+  createdAt   DateTime @default(now())
+
+  @@map("suspicious_reports")
+}
+
+model Document {
+  id         String    @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  title      String
+  fileUrl    String
+  expiryDate DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("documents")
+}
+
+model Reminder {
+  id          String   @id @default(uuid())
+  vehicleId   String
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@map("reminders")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model FamilyMember {
+  id          String   @id @default(uuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  memberName  String
+  memberPhone String
+  relation    String
+  createdAt   DateTime @default(now())
+
+  @@map("family_members")
+}
+
+model Fleet {
+  id        String   @id @default(uuid())
+  name      String
+  managerId String
+  manager   User     @relation("FleetManager", fields: [managerId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@map("fleets")
+}
+
+model GpsLog {
+  id         String   @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  latitude   Float
+  longitude  Float
+  speed      Float?
+  recordedAt DateTime @default(now())
+
+  @@map("gps_logs")
+}
+
+model RoadsideRequest {
+  id        String   @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  issueType String
+  location  String
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+
+  @@map("roadside_requests")
+}
+
+model InsurancePolicy {
+  id            String   @id @default(uuid())
+  vehicleId     String
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  providerName  String
+  policyNumber  String   @unique
+  startDate     DateTime
+  endDate       DateTime
+  premiumAmount Float
+  createdAt     DateTime @default(now())
+
+  @@map("insurance_policies")
+}
+
+model Payment {
+  id            String         @id @default(uuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id])
+  tenantId      String?
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  bookingId     String?
+  booking       RentalBooking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  amount        Float
+  paymentMethod PaymentMethod
+  status        PaymentStatus  @default(PENDING)
+  transactionId String?        @unique
+  receiptUrl    String?
+  note          String?
+  createdAt     DateTime       @default(now())
+
+  @@map("payments")
+}
+
+model IotDevice {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicleId       String?   @unique
+  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  imei            String    @unique
+  deviceName      String
+  deviceType      String    @default("GPS_TRACKER")
+  model           String?
+  simNumber       String?
+  status          String    @default("OFFLINE")
+  batteryLevel    Float?    @default(100)
+  ignitionStatus  Boolean   @default(false)
+  isEngineLocked  Boolean   @default(false)
+  lastPingAt      DateTime?
+  lastLatitude    Float?
+  lastLongitude   Float?
+  lastSpeed       Float?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("iot_devices")
+}
+
+model CustomerOtp {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, code])
+  @@map("customer_otps")
+}
+
+model PromoCode {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code            String
+  discountPercent Int       @default(10)
+  maxDiscount     Float?
+  minDays         Int       @default(1)
+  isActive        Boolean   @default(true)
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@unique([tenantId, code])
+  @@map("promo_codes")
+}
